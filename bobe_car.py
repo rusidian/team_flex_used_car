@@ -4,6 +4,7 @@
 import re
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
@@ -53,10 +54,10 @@ class BobeCar:
             raise
 
     def standardize_dataframe(
-        self,
-        data: dict,
-        data_key: str,
-        index_col: str | None = None
+            self,
+            data: dict,
+            data_key: str,
+            index_col: str | None = None
     ) -> pd.DataFrame:
         """
         dict 안에 들어있는 list[dict] 데이터를 DataFrame으로 변환합니다.
@@ -98,11 +99,11 @@ class BobeCar:
             raise
 
     def save_df_to_csv(
-        self,
-        df: pd.DataFrame,
-        filename: str,
-        dedup_keys: list[str],
-        encoding: str = "utf-8",
+            self,
+            df: pd.DataFrame,
+            filename: str,
+            dedup_keys: list[str],
+            encoding: str = "utf-8",
     ) -> Path | None:
         """
         DataFrame을 CSV 파일로 저장합니다.
@@ -255,4 +256,98 @@ class BobeCar:
 
         except Exception as e:
             print(f"[ERROR] get_maker_category failed (origin={origin}): {e}")
+            raise
+
+    def get_maker_models(self, origin: str, maker_code: int) -> dict:
+        """
+        제조사에서 판매를 모델의 정보 수집하고,
+        DataFrame으로 변환한 뒤 CSV 파일로 저장합니다.
+
+        제조사 페이지에서 다음 정보를 수집합니다.
+        - maker_code  : 제조사 코드
+        - origin      : 차량 구분 코드 (K / I)
+        - model_name  : 차량 모델 이름
+        - model_code  : 차량 모델 코드
+        - model_volume: 차량 모델 등록 대수
+        
+        :param origin: 차량 구분 코드
+                       'K' = 국산차
+                       'I' = 수입차
+        :param maker_code: 제조사 코드
+
+        :return:
+            {
+                "ok": 정상 처리 여부,
+                "df": 생성된 차량 모델 정보 DataFrame,
+                "csv_path": 저장된 CSV 파일 경로,
+                "count": 차량 모델 개수
+            }
+        """
+        try:
+            # 제조사 차량 페이지 요청 및 HTML 파싱
+            maker_url = f'{self.__BASE_URL}{origin}&maker_no={maker_code}'
+            soup = self.fetch_soup(maker_url)
+
+            # 차량 모델 영역 확인
+            model_category_tag = soup.find("div", class_="area-model")
+            if model_category_tag is None:
+                raise ValueError("차량 모델 영역(area-model)을 찾을 수 없습니다.")
+
+            # 차량 모델 버튼 목록 추출
+            model_categories = model_category_tag.select('button')
+            if not model_categories:
+                raise ValueError("차량 모델 버튼을 찾을 수 없습니다.")
+
+            models: list[dict] = []
+
+            # 차량 모델 정보 파싱
+            for idx, model_category in enumerate(model_categories, start=1):
+                onclick = model_category.get("onclick", "")
+                match = re.search(r"modelSel\(\s*(\d+)\s*,", onclick)
+                if not match:
+                    raise ValueError(f"[{idx}] 차량 모델 코드 파싱 실패")
+
+                model_code = int(match.group(1))
+
+                name_tag = model_category.select_one("span.t1")
+                if name_tag is None:
+                    raise ValueError(f"[{idx}] 차량 모델 이름(span.t1) 없음")
+                model_name = name_tag.get_text(strip=True)
+
+                volume_tag = model_category.select_one("span.t2")
+                if volume_tag is None:
+                    raise ValueError(f"[{idx}] 차량 모델 매물 수(span.t2) 없음")
+                model_volume = int(volume_tag.get_text(strip=True))
+
+                models.append({
+                    "model_name": model_name,
+                    "model_code": model_code,
+                    "model_volume": model_volume,
+                    "maker_code": maker_code,
+                    "origin": origin,
+                })
+
+            # DataFrame 변환 (index = model_name)
+            df = self.standardize_dataframe(
+                data={"models": models},
+                data_key="models",
+                index_col="model_name",
+            )
+
+            # CSV 저장 (기존 데이터와 병합 후 중복 제거)
+            csv_path = self.save_df_to_csv(
+                df=df.reset_index(),
+                filename="models",
+                dedup_keys=["model_code", "maker_code" ,"origin"],
+            )
+
+            return {
+                "ok": True,
+                "df": df,
+                "csv_path": csv_path,
+                "count": len(df),
+            }
+
+        except Exception as e:
+            print(f"[ERROR] get_maker_model failed (origin={origin},maker={maker_code}): {e}")
             raise
