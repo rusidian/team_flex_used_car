@@ -17,7 +17,7 @@ from pasers.regex_patterns import RE_MODEL_CODE, RE_MAKER_CODE
 class BobeCar:
     """
     보배드림 중고차 사이트에서
-    제조사/모델/세부모델 정보를 수집하기 위한 클래스
+    제조사/모델/세대모델 정보를 수집하기 위한 클래스
     """
 
     def __init__(self):
@@ -197,7 +197,7 @@ class BobeCar:
             soup = self.fetch_soup(origin_url)
 
             # 제조사 영역 확인
-            car_category_tag = soup.find("div", class_="area-maker")
+            car_category_tag = soup.select_one("div", class_="area-maker")
             if car_category_tag is None:
                 raise ValueError("제조사 영역(area-maker)을 찾을 수 없습니다.")
 
@@ -289,7 +289,7 @@ class BobeCar:
             soup = self.fetch_soup(maker_url)
 
             # 차량 모델 영역 확인
-            model_category_tag = soup.find("div", class_="area-model")
+            model_category_tag = soup.select_one("div", class_="area-model")
             if model_category_tag is None:
                 raise ValueError("차량 모델 영역(area-model)을 찾을 수 없습니다.")
 
@@ -349,4 +349,113 @@ class BobeCar:
 
         except Exception as e:
             print(f"[ERROR] get_maker_model failed (origin={origin},maker={maker_code}): {e}")
+            raise
+
+    def get_model_generation(
+            self,
+            origin: str,
+            maker_code: int,
+            model_code: int
+    ) -> dict:
+        """
+    차량 모델의 세대 정보 수집하고,
+    DataFrame으로 변환한 뒤 CSV 파일로 저장합니다.
+
+    제조사 페이지에서 다음 정보를 수집합니다.
+    - maker_code  : 제조사 코드
+    - origin      : 차량 구분 코드 (K / I)
+    - model_code  : 차량 모델 코드
+    - generation_name : 차량 모델 세대 이름
+    - generation_code : 차량 모델 세대 코드
+    - generation_volume : 등록된 차량 모델 세대 대수
+
+    :param origin: 차량 구분 코드
+                   'K' = 국산차
+                   'I' = 수입차
+    :param maker_code: 제조사 코드
+    :param model_code: 차량 모델 코드
+
+    :return:
+        {
+            "ok": 정상 처리 여부,
+            "df": 생성된 차량 모델 정보 DataFrame,
+            "csv_path": 저장된 CSV 파일 경로,
+            "count": 차량 모델 세대 개수
+        }
+    """
+
+        try:
+            # 차량 세대 페이지 요청 및 HTML 파싱
+            model_url = f'{self.__BASE_URL}{origin}&maker_no={maker_code}&group_no={model_code}'
+            soup = self.fetch_soup(model_url)
+
+            # 차량 모델 세대 영역 확인
+            generation_category_tag = soup.select_one("div.area-detail dl.group-list")
+            if generation_category_tag is None:
+                raise ValueError("차량 모델 세대 영역(area-detail)을 찾을 수 없습니다.")
+
+            # 차량 모델 세대 목록 추출
+            generation_dds = generation_category_tag.select("dd", recursive=False)
+            generation_categories = [
+                dd
+                for dd in generation_dds
+                if "display:none" not in (dd.get("style") or "").replace(" ", "").lower()
+            ]
+            if not generation_categories:
+                raise ValueError("차량 모델 버튼을 찾을 수 없습니다.")
+
+            generations: list[dict] = []
+
+            # 차량 모델 세데 정보 파싱
+            for idx, generation_category in enumerate(generation_categories, start=1):
+
+                input_tag = generation_category.select_one('input[name="model_no[]"]')
+                if not input_tag or not input_tag.has_attr("value"):
+                    raise ValueError(f"[{idx}] 차량 모델 세대 코드 파싱 실패")
+                generation_code = int(input_tag.get("value"))
+
+                name_tag = generation_category.select_one("label")
+                if name_tag is None:
+                    raise ValueError(f"[{idx}] 차량 모델 세대 이름(label) 없음")
+                generation_name = name_tag.get_text(strip=True)
+
+                volume_tag = generation_category.select_one("span.t2")
+                if volume_tag is None:
+                    raise ValueError(f"[{idx}] 차량 모델 매물 수(span.t2) 없음")
+                generation_volume = int(volume_tag.get_text(strip=True))
+
+                generations.append({
+                    "generation_name": generation_name,
+                    "generation_code": generation_code,
+                    "generation_volume": generation_volume,
+                    "maker_code": maker_code,
+                    "model_code": model_code,
+                    "origin": origin,
+                })
+
+            # DataFrame 변환 (index = model_name)
+            df = self.standardize_dataframe(
+                data={"generations": generations},
+                data_key="generations",
+                index_col="generation_name",
+            )
+
+            # CSV 저장 (기존 데이터와 병합 후 중복 제거)
+            csv_path = self.save_df_to_csv(
+                df=df.reset_index(),
+                filename="generations",
+                dedup_keys=["generation_code", "model_code", "maker_code", "origin"],
+            )
+
+            return {
+                "ok": True,
+                "df": df,
+                "csv_path": csv_path,
+                "count": len(df),
+            }
+
+
+        except Exception as e:
+            print(
+                f"[ERROR] get_maker_generation failed (origin={origin},maker={maker_code},model={model_code}): {e}")
             raise
