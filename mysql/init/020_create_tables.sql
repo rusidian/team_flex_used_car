@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS car_specs
     maker_id        BIGINT UNSIGNED NOT NULL COMMENT 'maker 참조 식별자(FK)',
     model_name      VARCHAR(50)     NOT NULL COMMENT '자동차 차량명',
     body_type       VARCHAR(20)     NOT NULL COMMENT '세단/RV/SUV/승합/트럭/버스 (추후 분리 예정)',
-    generation_name VARCHAR(20)     NOT NULL COMMENT '세대 명칭(예: IG, DN8, F/L, 코나 등)',
+    generation_name VARCHAR(100)    NOT NULL COMMENT '세대 명칭(예: IG, DN8, F/L, 코나 등)',
     model_year      VARCHAR(100)    NOT NULL COMMENT '판매 연도 (예: 2019~2023, 2019~현재)',
     trim_name       VARCHAR(50)     NOT NULL DEFAULT '' COMMENT '트림명(없으면 공백)',
     drivetrain_type VARCHAR(20)     NOT NULL COMMENT '전륜/후륜/사륜 (추후 확장)',
