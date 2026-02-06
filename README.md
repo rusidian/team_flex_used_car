@@ -16,9 +16,9 @@
 ---
 ## 실행 환경 (Environment)
 
-- Python 3.10+
-- MySQL 8.0+
-- Streamlit 1.30+
+- Python 3.12
+- MySQL 8.0.45
+- Streamlit 1.53
 - 주요 라이브러리: pandas, numpy, scikit-learn, matplotlib, sqlalchemy, pymysql
 
 ---
