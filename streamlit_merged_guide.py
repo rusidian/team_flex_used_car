@@ -1,27 +1,38 @@
+# streamlit_usedcar_guide_teamdb_fixed.py
+# -*- coding: utf-8 -*-
+"""중고차 구매 가이드 (used_car_db) - FIXED
 
+이번 수정에서 해결한 것
+1) 추천/탐색에서 '차종(body_type)' 선택이 결과에 반영되지 않던 문제
+   - 원인: render_recommend()에서 sel_bodies로 필터링하는 코드가 빠져 있었음.
+2) price 단위가 DB마다 (원/만원) 혼재될 수 있어 자동 보정
+   - SQL에서 uc.price를 그대로 가져온 뒤, 파이썬에서 중앙값 기준으로 원/만원을 추정해 price_manwon(만원)으로 변환.
+
+설정 (필수): .streamlit/secrets.toml 또는 환경변수
+  DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS
+
+실행:
+  streamlit run streamlit_usedcar_guide_teamdb_fixed.py
+"""
+
+import os
 import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.express as px
 from sqlalchemy import create_engine, text
 
-from usedcar_analysis import (
-    add_model_columns,
-    build_similarity_cluster,
-)
+from usedcar_analysis import build_similarity_cluster
+
 
 # =========================================================
 # CONFIG
 # =========================================================
-st.set_page_config(page_title="중고차 구매 가이드", page_icon=" ", layout="wide")
+st.set_page_config(page_title="중고차 구매 가이드", page_icon="🚗", layout="wide")
 
-
-
-# ---- Dark UI ----
 st.markdown(
     """
 <style>
-/* ===== Toss-like (dark) theme ===== */
 .stApp{
   background:
     radial-gradient(1100px 520px at 18% 10%, rgba(37,99,235,0.18), transparent 55%),
@@ -29,35 +40,18 @@ st.markdown(
     #0B1220;
   color: rgba(255,255,255,0.92);
 }
-
 .block-container{
   padding-top: 3.0rem !important;
   padding-bottom: 1.6rem !important;
   max-width: 1200px;
 }
-
-html, body, [class*="css"]{ font-size:14px; }
-
-/* Sidebar */
 section[data-testid="stSidebar"] > div{
   background:#0F172A;
   border-right:1px solid rgba(148,163,184,0.14);
 }
+.hero-title{ font-size: 2.15rem; font-weight: 850; letter-spacing: -0.02em; margin: 0 0 0.35rem 0; }
+.hero-subtitle{ font-size: 1.02rem; color: rgba(255,255,255,0.70); margin: 0 0 1.45rem 0; }
 
-/* Headings */
-.hero-title{
-  font-size: 2.15rem;
-  font-weight: 850;
-  letter-spacing: -0.02em;
-  margin: 0 0 0.35rem 0;
-}
-.hero-subtitle{
-  font-size: 1.02rem;
-  color: rgba(255,255,255,0.70);
-  margin: 0 0 1.45rem 0;
-}
-
-/* Cards */
 .landing-card{
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.10);
@@ -65,62 +59,24 @@ section[data-testid="stSidebar"] > div{
   padding: 1.15rem 1.15rem 1.05rem 1.15rem;
   box-shadow: 0 14px 40px rgba(0,0,0,0.26);
 }
-.landing-card .title{
-  font-size: 1.15rem;
-  font-weight: 800;
-  margin: 0 0 0.55rem 0;
-  letter-spacing: -0.01em;
-}
-.landing-card .desc{
-  font-size: 0.98rem;
-  color: rgba(255,255,255,0.72);
-  line-height: 1.55;
-  margin: 0 0 0.95rem 0;
-}
+.landing-card .title{ font-size: 1.15rem; font-weight: 800; margin: 0 0 0.55rem 0; letter-spacing: -0.01em; }
+.landing-card .desc{ font-size: 0.98rem; color: rgba(255,255,255,0.72); line-height: 1.55; margin: 0 0 0.95rem 0; }
 
-/* General card used elsewhere */
 .card{
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(148,163,184,0.18);
   border-radius: 16px;
   padding: 12px 14px;
-}
-/* Metric card hierarchy */
-.card{
   display:flex;
   flex-direction:column;
   gap:6px;
   min-height: 92px;
   justify-content: space-between;
 }
+.card .k{ font-size: 0.80rem !important; font-weight: 800 !important; letter-spacing: 0.02em; text-transform: uppercase; color: rgba(255,255,255,0.62) !important; }
+.card .v{ font-size: 1.45rem !important; font-weight: 900 !important; letter-spacing: -0.02em; color: rgba(255,255,255,0.95) !important; line-height: 1.12; }
+.card .s{ font-size: 0.88rem !important; font-weight: 600 !important; color: rgba(148,163,184,0.95) !important; line-height: 1.25; }
 
-/* 라벨 */
-.card .k{
-  font-size: 0.80rem !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.62) !important;
-}
-
-/* 값 */
-.card .v{
-  font-size: 1.45rem !important;
-  font-weight: 900 !important;
-  letter-spacing: -0.02em;
-  color: rgba(255,255,255,0.95) !important;
-  line-height: 1.12;
-}
-
-/* 기준/설명 */
-.card .s{
-  font-size: 0.88rem !important;
-  font-weight: 600 !important;
-  color: rgba(148,163,184,0.95) !important;
-  line-height: 1.25;
-}
-
-/* Buttons */
 div.stButton > button{
   border-radius: 14px;
   padding: 0.85rem 1rem;
@@ -132,31 +88,27 @@ div.stButton > button:hover{
   background: rgba(255,255,255,0.10);
   border-color: rgba(255,255,255,0.22);
 }
-
 div.stButton > button[kind="primary"]{
   border: none !important;
   background: linear-gradient(135deg, rgba(37,99,235,0.98), rgba(59,130,246,0.92)) !important;
   box-shadow: 0 10px 30px rgba(37,99,235,0.22);
 }
 div.stButton > button[kind="primary"]:hover{ filter: brightness(1.05); }
-
 div.stButton > button[kind="secondary"]{
   background: transparent !important;
   border: 1px solid rgba(255,255,255,0.18) !important;
 }
-div.stButton > button[kind="secondary"]:hover{
-  background: rgba(255,255,255,0.06) !important;
-}
+div.stButton > button[kind="secondary"]:hover{ background: rgba(255,255,255,0.06) !important; }
 
-/* Dataframe rounding */
 [data-testid="stDataFrame"]{ border-radius: 14px; overflow:hidden; }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-COLOR_ME = "#FACC15"   # amber
-COLOR_MED = "#38BDF8"  # sky
+COLOR_ME = "#FACC15"
+COLOR_MED = "#38BDF8"
+
 
 def card(k: str, v: str, s: str = ""):
     st.markdown(
@@ -170,70 +122,127 @@ def card(k: str, v: str, s: str = ""):
         unsafe_allow_html=True,
     )
 
+
 # =========================================================
-# DB (EDIT HERE if needed)
+# DB CONNECTION (secrets/env only)
 # =========================================================
+def _get_secret_required(name: str) -> str:
+    try:
+        if name in st.secrets:
+            return str(st.secrets[name])
+    except Exception:
+        pass
+    v = os.environ.get(name)
+    if v is None or str(v).strip() == "":
+        raise RuntimeError(
+            f"DB 설정 누락: {name}. .streamlit/secrets.toml 또는 환경변수로 설정하세요."
+        )
+    return str(v)
+
+
+DB_HOST = _get_secret_required("DB_HOST")
+DB_PORT = _get_secret_required("DB_PORT")
+DB_NAME = _get_secret_required("DB_NAME")
+DB_USER = _get_secret_required("DB_USER")
+DB_PASS = _get_secret_required("DB_PASS")
+
 ENGINE = create_engine(
-    "mysql+pymysql://usedcar_user:usedcar_user@127.0.0.1:3306/usedcar_proj?charset=utf8mb4"
+    f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
 )
 
-@st.cache_data(ttl=3600)
+
+# =========================================================
+# LOAD + PREPROCESS
+# =========================================================
+@st.cache_data(ttl=900)
 def load_db() -> pd.DataFrame:
     query = """
     SELECT
-      b.brand_name AS brand,
-      f.model_name_raw,
-      f.year_int,
-      f.mileage_km,
-      f.price_manwon,
-      f.fuel_type,
-      f.region
-    FROM fact_car_listing f
-    JOIN dim_brand b ON b.brand_id = f.brand_id
+      m.maker_name  AS brand,
+      cs.model_name AS model_name_raw,
+      cs.body_type  AS body_type,
+      (YEAR(CURDATE()) - FLOOR(uc.car_age_months/12)) AS year_int,
+      uc.mileage_km AS mileage_km,
+      uc.price      AS price_raw,
+      cs.fuel_type  AS fuel_type,
+      uc.is_lease   AS is_lease
+    FROM used_cars uc
+    JOIN car_specs cs ON cs.car_spec_id = uc.car_spec_id
+    JOIN makers m     ON m.maker_id     = cs.maker_id
     """
+
     df = pd.read_sql(text(query), ENGINE)
 
-    df["brand"] = df["brand"].astype(str).str.strip()
-    for c in ["year_int", "mileage_km", "price_manwon"]:
+    # ---- types/cleanup
+    for c in ["brand", "model_name_raw", "fuel_type", "body_type"]:
+        df[c] = df[c].astype(str).str.strip()
+
+    for c in ["year_int", "mileage_km", "price_raw", "is_lease"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    df = df.dropna(subset=["brand", "model_name_raw", "year_int", "mileage_km", "price_manwon"]).copy()
+    # ---- basic filters
+    df = df.dropna(subset=["brand", "model_name_raw", "year_int", "mileage_km", "price_raw"]).copy()
+    df = df[(df["price_raw"] > 0) & (df["mileage_km"] >= 0)].copy()
+    df = df[(df["year_int"] >= 1990) & (df["year_int"] <= 2035)].copy()
+    df = df[df["is_lease"].fillna(0) != 1].copy()
 
-    df = add_model_columns(
-        df,
-        brand_col="brand",
-        model_raw_col="model_name_raw",
-        model_key_col="model_key",
-        model_family_col="model_family",
-    )
+    # ---- price unit auto-detect
+    # heuristic:
+    # - if median price_raw is very large (e.g., > 100000), it's likely '원'
+    # - else it's likely already '만원'
+    med = float(df["price_raw"].median())
+    if med > 100000:  # 원으로 추정
+        df["price_manwon"] = df["price_raw"] / 10000.0
+        df.attrs["price_unit"] = "원(→만원 변환)"
+    else:             # 만원으로 추정
+        df["price_manwon"] = df["price_raw"].astype(float)
+        df.attrs["price_unit"] = "만원(그대로 사용)"
+
+    # ---- 모델 대분류: car_specs.model_name 그대로
+    df["model_family"] = df["model_name_raw"]
+    df["model_key"] = (df["brand"] + "_" + df["model_family"]).str.replace(" ", "", regex=False)
+
+    # keep only what app needs
+    keep = ["brand", "model_name_raw", "body_type", "year_int", "mileage_km", "price_manwon", "fuel_type", "model_family", "model_key"]
+    df = df[keep].copy()
+
     return df
 
-df_all = load_db()
+
+try:
+    df_all = load_db()
+except Exception as e:
+    st.error(str(e))
+    st.stop()
+
+if df_all.empty:
+    st.warning("DB에서 유효한 매물이 로드되지 않았습니다. (price>0, is_lease!=1 조건 등 확인)")
+    st.stop()
+
 
 # =========================================================
 # ROUTING
 # =========================================================
-# ⚠️ 중요: step 이름을 버튼/디스패치에서 "같은 문자열"로 써야 합니다.
-# 추천은 잘 되는데 '가격적정도'만 안 넘어가는 경우 대부분 step 문자열 불일치가 원인입니다.
-
 STEP_MAIN = "main"
-STEP_PRICE_FIT = "price_fit"     # 가격적정도(구 프리미엄)
+STEP_PRICE_FIT = "price_fit"
 STEP_RECOMMEND = "recommend"
 
 if "step" not in st.session_state:
     st.session_state.step = STEP_MAIN
 
+
 def go(step: str):
     st.session_state.step = step
     st.rerun()
 
+
 # =========================================================
-# 0) MAIN
+# MAIN
 # =========================================================
 if st.session_state.step == STEP_MAIN:
     st.markdown('<div class="hero-title">중고차 구매 가이드</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="hero-subtitle">구매 차량이 정해졌다면 가격 적정도를 확인하고, 아직 탐색 중이라면 조건 기반 추천 후보를 확인하세요.</div>',
+        '<div class="hero-subtitle">가격 적정도 분석 또는 조건 기반 추천을 선택하세요.</div>',
         unsafe_allow_html=True
     )
 
@@ -257,7 +266,7 @@ if st.session_state.step == STEP_MAIN:
             '''
             <div class="landing-card">
               <div class="title">아직 후보를 탐색 중인 경우</div>
-              <div class="desc">예산·연식·주행 조건으로 후보군을 구성하고, 선호도(가격↔상태) 기준으로 추천합니다.</div>
+              <div class="desc">예산·연식·주행 조건으로 후보를 좁히고, 선호도(가격↔상태) 기준으로 추천합니다.</div>
             ''',
             unsafe_allow_html=True
         )
@@ -267,8 +276,9 @@ if st.session_state.step == STEP_MAIN:
 
     st.stop()
 
+
 # =========================================================
-# 1) PRICE FIT (Premium) PAGE
+# PRICE FIT
 # =========================================================
 def parse_int(name: str, raw: str, min_v: int, max_v: int) -> int:
     s = (raw or "").strip().replace(",", "")
@@ -281,6 +291,7 @@ def parse_int(name: str, raw: str, min_v: int, max_v: int) -> int:
         raise ValueError(f"{name} 범위: {min_v}~{max_v}")
     return v
 
+
 def parse_float(name: str, raw: str, min_v: float, max_v: float) -> float:
     s = (raw or "").strip().replace(",", "")
     if not s:
@@ -292,6 +303,7 @@ def parse_float(name: str, raw: str, min_v: float, max_v: float) -> float:
     if v < min_v or v > max_v:
         raise ValueError(f"{name} 범위: {min_v}~{max_v}")
     return v
+
 
 def render_price_fit():
     st.title("📌 가격적정도 분석")
@@ -330,7 +342,6 @@ def render_price_fit():
         st.stop()
 
     target = {"model_family": model, "year_int": year, "mileage_km": mileage, "price_manwon": price}
-
     cluster = build_similarity_cluster(df_all, target, key_col="model_family")
     if cluster is None or len(cluster) < 10:
         st.warning(f"비교군 최소 10개가 필요합니다. 현재: {0 if cluster is None else len(cluster)}개")
@@ -343,37 +354,10 @@ def render_price_fit():
     beta, *_ = np.linalg.lstsq(X_, y, rcond=None)
 
     expected = float(np.array([1.0, year, mileage]) @ beta)
-    premium = float(price - expected)  # 이름은 premium지만 UI에서는 '가격적정도(실제-기대)'로 표기
+    premium = float(price - expected)
 
     pred_all = X_ @ beta
     premium_series = y - pred_all
-
-    # =========================
-    # 대안 매물 TOP 3 추출
-    # (유사 군집 내에서 내 차량보다 '가격차이(실제-기대)'가 더 낮은 매물)
-    # =========================
-    alt_df = cluster.copy()
-
-    # 군집 내 각 매물의 기대가격/가격차이(실제-기대) 저장
-    alt_df["expected_price"] = pred_all
-    alt_df["price_gap"] = premium_series  # = 실제 - 기대
-
-    # 대안 정의: 내 차량보다 가격차이가 더 낮은(= 더 덜 비싸거나 더 저렴한) 매물
-    alternatives = alt_df[alt_df["price_gap"] < premium].copy()
-
-    # 정렬 기준:
-    # 1) price_gap 오름차순(가장 저렴/합리적) 우선
-    # 2) weight가 있으면 유사도가 높은 것 우선
-    sort_cols = ["price_gap"]
-    asc = [True]
-    if "weight" in alternatives.columns:
-        sort_cols.append("weight")
-        asc.append(False)
-
-    alternatives = alternatives.sort_values(sort_cols, ascending=asc)
-
-    top3 = alternatives.head(3)
-
 
     q1, q3 = np.quantile(premium_series, [0.25, 0.75])
     med = float(np.median(premium_series))
@@ -398,24 +382,23 @@ def render_price_fit():
 
     st.divider()
 
-    st.subheader("가격차이 분포 (실제 − 기대)")
-    st.write(
-        "유사 매물의 ‘가격차이(실제−기대)’ 분포에서 내 차량이 어느 위치인지 보여줍니다.\n"
-        "- **초록(저렴)**: Q1보다 낮음  /  **파랑(적정)**: Q1~Q3  /  **빨강(비쌈)**: Q3보다 높음\n"
-        f"- 노란 점선 = 내 차량 (**{premium:+,.0f}만원**)  ·  파란 점선 = 중앙값"
+    fig = px.histogram(
+        pd.DataFrame({"premium": premium_series}),
+        x="premium",
+        nbins=28,
+        opacity=0.95,
+        template="plotly_dark",
     )
-
-    fig = px.histogram(pd.DataFrame({"premium": premium_series}), x="premium", nbins=28, opacity=0.95, template="plotly_dark")
 
     xmin = float(np.min(premium_series))
     xmax = float(np.max(premium_series))
 
-    fig.add_vrect(x0=xmin, x1=q1, fillcolor="rgba(34,197,94,0.18)", line_width=0, annotation_text="저렴", annotation_position="top left")
-    fig.add_vrect(x0=q1, x1=q3, fillcolor="rgba(56,189,248,0.12)", line_width=0, annotation_text="적정", annotation_position="top")
-    fig.add_vrect(x0=q3, x1=xmax, fillcolor="rgba(239,68,68,0.16)", line_width=0, annotation_text="비쌈", annotation_position="top right")
+    fig.add_vrect(x0=xmin, x1=q1, fillcolor="rgba(34,197,94,0.18)", line_width=0)
+    fig.add_vrect(x0=q1, x1=q3, fillcolor="rgba(56,189,248,0.12)", line_width=0)
+    fig.add_vrect(x0=q3, x1=xmax, fillcolor="rgba(239,68,68,0.16)", line_width=0)
 
-    fig.add_vline(x=premium, line_dash="dash", line_color=COLOR_ME, line_width=3, annotation_text="내 차량", annotation_position="top left")
-    fig.add_vline(x=med, line_dash="dot", line_color=COLOR_MED, line_width=2, annotation_text="중앙값", annotation_position="top right")
+    fig.add_vline(x=premium, line_dash="dash", line_color=COLOR_ME, line_width=3)
+    fig.add_vline(x=med, line_dash="dot", line_color=COLOR_MED, line_width=2)
 
     fig.update_layout(
         height=520,
@@ -428,29 +411,9 @@ def render_price_fit():
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    st.divider()
-
-    with st.expander("대안 후보 3개 보기 (유사 비교군에서 더 합리적인 선택)", expanded=False):
-        st.write("내 차량보다 **가격차이(실제−기대)** 가 더 낮은 매물 중 상위 3개를 보여줍니다.")
-
-        show_cols = []
-        for c in ["brand", "model_name_raw", "year_int", "mileage_km", "price_manwon", "expected_price", "price_gap",
-                  "fuel_type", "region", "weight"]:
-            if c in top3.columns:
-                show_cols.append(c)
-
-        if len(top3) == 0:
-            st.info("현재 선택보다 더 합리적인(가격차이가 더 낮은) 대안 매물이 비교군에서 발견되지 않았습니다.")
-        else:
-            view = top3[show_cols].copy()
-            if "expected_price" in view.columns:
-                view["expected_price"] = view["expected_price"].round(0)
-            if "price_gap" in view.columns:
-                view["price_gap"] = view["price_gap"].round(0)
-            st.dataframe(view, use_container_width=True)
 
 # =========================================================
-# 2) RECOMMEND / EXPLORE (DB-backed)
+# RECOMMEND
 # =========================================================
 def render_recommend():
     st.title("추천/탐색")
@@ -464,9 +427,30 @@ def render_recommend():
         brands = sorted(df_all["brand"].dropna().unique())
         sel_brands = st.multiselect("브랜드(복수 선택)", brands, default=[], key="reco_brands")
 
-        max_price = st.slider("최대 가격(만원)", 100, int(df_all["price_manwon"].quantile(0.95)), 2000, step=50, key="reco_price")
-        min_year = st.slider("최소 연식", int(df_all["year_int"].quantile(0.05)), int(df_all["year_int"].max()), int(df_all["year_int"].quantile(0.5)), step=1, key="reco_year")
-        max_mileage = st.slider("최대 주행거리(km)", 0, int(df_all["mileage_km"].quantile(0.95)), 80000, step=5000, key="reco_mileage")
+        max_price = st.slider(
+            "최대 가격(만원)",
+            100,
+            int(df_all["price_manwon"].quantile(0.95)),
+            2000,
+            step=50,
+            key="reco_price",
+        )
+        min_year = st.slider(
+            "최소 연식",
+            int(df_all["year_int"].quantile(0.05)),
+            int(df_all["year_int"].max()),
+            int(df_all["year_int"].quantile(0.5)),
+            step=1,
+            key="reco_year",
+        )
+        max_mileage = st.slider(
+            "최대 주행거리(km)",
+            0,
+            int(df_all["mileage_km"].quantile(0.95)),
+            80000,
+            step=5000,
+            key="reco_mileage",
+        )
 
         st.markdown("#### 가성비 가중치")
         w_price = st.slider(
@@ -484,6 +468,9 @@ def render_recommend():
         fuels = sorted([f for f in df_all.get("fuel_type", pd.Series(dtype=str)).dropna().unique()])
         sel_fuels = st.multiselect("연료(선택)", fuels, default=[], key="reco_fuels")
 
+        body_types = sorted([b for b in df_all.get("body_type", pd.Series(dtype=str)).dropna().unique()])
+        sel_bodies = st.multiselect("차종(선택)", body_types, default=[], key="reco_body")
+
         top_n = st.select_slider("추천 개수", options=[10, 20, 30, 50], value=10, key="reco_topn")
         run = st.button("추천 보기", type="primary", key="reco_run")
 
@@ -492,10 +479,14 @@ def render_recommend():
         st.stop()
 
     df = df_all.copy()
+
+    # ✅ 각 필터는 독립적으로 적용
     if sel_brands:
         df = df[df["brand"].isin(sel_brands)]
-    if sel_fuels and "fuel_type" in df.columns:
+    if sel_fuels:
         df = df[df["fuel_type"].isin(sel_fuels)]
+    if sel_bodies:
+        df = df[df["body_type"].isin(sel_bodies)]
 
     df = df[
         (df["price_manwon"] <= max_price) &
@@ -507,10 +498,8 @@ def render_recommend():
         st.warning("조건에 맞는 매물이 없습니다. 조건을 완화해보세요.")
         st.stop()
 
-    st.info(f"가성비 점수는 가격({int(w_price*100)}%) + 상태(연식·주행, {int(w_cond*100)}%)의 가중합으로 계산됩니다. (후보군 내 상대 점수)")
-
-    # Value score (teammate idea)
-    base_year = 2026
+    # Value score
+    base_year = int(pd.Timestamp.today().year)
     df["age"] = base_year - df["year_int"]
     df["converted_mileage"] = (df["age"] * 22000) + df["mileage_km"]
 
@@ -536,14 +525,11 @@ def render_recommend():
     st.divider()
 
     st.subheader(f"가성비 TOP {top_n}")
-    show_cols = ["가성비 순위", "brand", "model_family", "price_manwon", "year_int", "mileage_km", "fuel_type", "region", "value_score"]
-    show_cols = [c for c in show_cols if c in df.columns]
+    show_cols = ["가성비 순위", "brand", "model_family", "price_manwon", "year_int", "mileage_km", "fuel_type", "body_type", "value_score"]
     st.dataframe(df.head(int(top_n))[show_cols], use_container_width=True)
 
     st.divider()
     st.subheader("📈 시장 분포에서 위치 보기")
-    st.write("가성비 상위 후보가 시장에서 어느 영역(가격/상태)에 몰려 있는지 빠르게 훑습니다.")
-
     fig = px.scatter(
         df.sample(min(len(df), 2000), random_state=7),
         x="converted_mileage",
@@ -556,6 +542,7 @@ def render_recommend():
     fig.update_layout(height=520)
     st.plotly_chart(fig, use_container_width=True)
 
+
 # =========================================================
 # DISPATCH
 # =========================================================
@@ -564,6 +551,5 @@ if st.session_state.step == STEP_PRICE_FIT:
 elif st.session_state.step == STEP_RECOMMEND:
     render_recommend()
 else:
-    # unknown step → main
     st.session_state.step = STEP_MAIN
     st.rerun()
