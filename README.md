@@ -57,10 +57,6 @@ streamlit run app.py
 - DB_PASSWORD  
 - DB_NAME
 
-- MYSQL_ROOT_PASSWORD=skn261
-MYSQL_DATABASE=used_car_db
-TZ=Asia/Seoul
-
 환경변수/설정 파일 위치는 팀 최종 구성에 맞춰 업데이트합니다.
 ---
 
