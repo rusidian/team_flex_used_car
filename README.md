@@ -14,7 +14,50 @@
 | 윤찬호 | 웹크롤링 설계/구현, 데이터 수집/전처리/정제                                   |
 
 ---
+## 실행 환경 (Environment)
 
+- Python 3.10+
+- MySQL 8.0+
+- Streamlit 1.30+
+- 주요 라이브러리: pandas, numpy, scikit-learn, matplotlib, sqlalchemy, pymysql
+
+---
+## 실행 방법 (How to Run)
+
+> 팀원 코드(크롤링/스키마/적재)가 완성되면, 여기 실행 절차를 최종 버전으로 확정합니다.
+
+### 0) 라이브러리 설치
+
+```bash
+pip install -r requirements.txt
+```
+
+### 1) DB 준비
+
+- MySQL 실행
+- 스키마 생성: `02_database_schema/`
+- 데이터 적재/전처리: `03_data_pipeline/`
+
+---
+
+### 2) Streamlit 실행
+
+```bash
+cd 05_streamlit_app
+streamlit run app.py
+```
+
+---
+
+### 3) (필요 시) 환경변수 설정
+
+- DB_HOST  
+- DB_PORT  
+- DB_USER  
+- DB_PASSWORD  
+- DB_NAME  
+
+환경변수/설정 파일 위치는 팀 최종 구성에 맞춰 업데이트합니다.
 ---
 
 ## 구현 화면 (Demo)
