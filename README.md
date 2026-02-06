@@ -51,13 +51,8 @@ streamlit run app.py
 
 ### 3) (필요 시) 환경변수 설정
 
-- DB_HOST  
-- DB_PORT  
-- DB_USER  
-- DB_PASSWORD  
-- DB_NAME
-
-환경변수/설정 파일 위치는 팀 최종 구성에 맞춰 업데이트합니다.
+- `.env.example`을 복사해 `.env`로 만들고 값을 입력합니다.
+- 필요 변수: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
 ---
 
 ## 구현 화면 (Demo)
