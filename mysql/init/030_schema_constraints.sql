@@ -2,28 +2,7 @@
 USE used_car_db;
 
 -- =========================================================
--- 1) Primary Keys
--- =========================================================
-
--- table for makers
-ALTER TABLE makers
-    ADD CONSTRAINT pk_makers PRIMARY KEY (maker_id);
-
--- table for car_specs
-ALTER TABLE car_specs
-    ADD CONSTRAINT pk_car_specs PRIMARY KEY (car_spec_id);
-
--- table for used_cars
-ALTER TABLE used_cars
-    ADD CONSTRAINT pk_used_cars PRIMARY KEY (used_car_id);
-
--- table for car_specs
-ALTER TABLE leases
-    ADD CONSTRAINT pk_leases PRIMARY KEY (lease_id);
-
-
--- =========================================================
--- 2) Unique Constraints
+-- 1) Unique Constraints
 -- =========================================================
 
 -- 차량 1대당 리스 정보 1개라는 전제라면 UNIQUE 권장
@@ -36,30 +15,35 @@ ALTER TABLE leases
 
 
 -- =========================================================
--- 3) Foreign Keys
+-- 2) Foreign Keys
 -- =========================================================
 
 -- car_specs.maker_id references makers.maker_id
 -- Each car specification belongs to a single manufacturer.
 ALTER TABLE car_specs
     ADD CONSTRAINT fk_car_specs_makers
-        FOREIGN KEY (maker_id) REFERENCES makers(maker_id);
+        FOREIGN KEY (maker_id) REFERENCES makers(maker_id)
+            ON UPDATE CASCADE
+            ON DELETE RESTRICT;
 
 -- used_cars.car_spec_id references car_specs.car_spec_id
 -- Each used car is associated with one car specification.
 ALTER TABLE used_cars
     ADD CONSTRAINT fk_used_cars_car_specs
-        FOREIGN KEY (car_spec_id) REFERENCES car_specs(car_spec_id);
+        FOREIGN KEY (car_spec_id) REFERENCES car_specs(car_spec_id)
+            ON UPDATE CASCADE
+            ON DELETE RESTRICT;
 
 -- leases.used_car_id references used_cars.used_car_id
 -- Lease information is linked to a specific used car listing.
 ALTER TABLE leases
     ADD CONSTRAINT fk_leases_used_cars
-        FOREIGN KEY (used_car_id) REFERENCES used_cars(used_car_id);
-
+        FOREIGN KEY (used_car_id) REFERENCES used_cars(used_car_id)
+            ON UPDATE CASCADE
+            ON DELETE CASCADE;
 
 -- =========================================================
--- 4) Check Constraints (MySQL 8+)
+-- 3) Check Constraints (MySQL 8+)
 -- =========================================================
 
 -- maker_origin insert/update value check
@@ -76,22 +60,24 @@ ALTER TABLE car_specs
 
 
 -- =========================================================
--- 5) Indexes
+-- 4) Indexes
 -- =========================================================
 
 -- Index for joining car_specs with makers
 -- Used when filtering or joining car specifications by manufacturer.
 CREATE INDEX idx_car_specs_maker_id
-ON car_specs (maker_id);
+    ON car_specs(maker_id);
 
 
 -- Index for joining used_cars with car_specs
 -- Used to efficiently retrieve used car listings by car specification.
 CREATE INDEX idx_used_cars_car_spec_id
-ON used_cars (car_spec_id);
+    ON used_cars(car_spec_id);
 
+-- insert used_cars용
+-- car_specs lookup 최적화
+CREATE INDEX idx_car_specs_lookup
+ON car_specs (maker_id, model_name, generation_name, fuel_type, displacement_cc, transmission, trim_name);
 
--- Index for joining leases with used_cars
--- Used to quickly access lease information for a specific used car.
-CREATE INDEX idx_leases_used_car_id
-ON leases (used_car_id);
+-- used_cars 중복 방지(재실행 대비)
+CREATE UNIQUE INDEX ux_used_cars_listing_url ON used_cars(listing_url);
