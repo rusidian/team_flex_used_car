@@ -16,7 +16,7 @@
 ---
 ## 실행 환경 (Environment)
 > 앞에는 개발에 사용된 언어와 버전이고 ⇒ 뒤 부터는 docker image
-> Python라이브러리는 Streamlit만 기재 자세한 거는 ![requirements.txt]('05_streamlit_app/requirements.txt')를 참조
+> Python라이브러리는 Streamlit만 기재 자세한 거는 [requirements.txt](05_streamlit_app/requirements.txt)를 참조
 - Python 3.12 ⇒ 
   - Streamlit 1.53
   - 주요 라이브러리: pandas, numpy, scikit-learn, matplotlib, sqlalchemy, pymysql
